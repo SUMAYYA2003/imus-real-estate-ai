@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { MarketTrendChart } from '@/components/dashboard/MarketTrendChart';
 import { AreaYieldChart } from '@/components/dashboard/AreaYieldChart';
+import { useCurrency } from '@/context/CurrencyContext';
 import { 
   Building2, 
   TrendingUp, 
@@ -18,6 +19,7 @@ import {
 
 export default function Home() {
   const [introFinished, setIntroFinished] = useState(false);
+  const { formatPrice, formatRate } = useCurrency();
 
   return (
     <main className="relative min-h-screen w-full bg-[#07060A] text-slate-100 flex">
@@ -55,7 +57,9 @@ export default function Home() {
                   <span className="text-xs font-medium">Median Sales Price</span>
                   <Building2 className="h-4 w-4 text-purple-300" />
                 </div>
-                <div className="text-2xl font-bold font-mono text-white">AED 2,450,000</div>
+                <div className="text-2xl font-bold font-mono text-white">
+                  {formatPrice(2450000)}
+                </div>
                 <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-400">
                   <ArrowUpRight className="h-3.5 w-3.5" />
                   <span>+8.4% vs last quarter</span>
@@ -67,7 +71,9 @@ export default function Home() {
                   <span className="text-xs font-medium">Avg Price / SqFt</span>
                   <Calculator className="h-4 w-4 text-indigo-300" />
                 </div>
-                <div className="text-2xl font-bold font-mono text-white">AED 1,840</div>
+                <div className="text-2xl font-bold font-mono text-white">
+                  {formatRate(1840)}
+                </div>
                 <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-400">
                   <ArrowUpRight className="h-3.5 w-3.5" />
                   <span>+4.2% annualized</span>

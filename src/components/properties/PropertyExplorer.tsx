@@ -4,17 +4,16 @@ import React, { useState } from 'react';
 import { 
   Search, 
   Filter, 
-  Building2, 
   Bed, 
   Bath, 
   Maximize2, 
-  ArrowUpRight, 
   ShieldCheck, 
-  X,
-  TrendingUp,
-  MapPin,
-  Sparkles
+  X, 
+  TrendingUp, 
+  MapPin, 
+  Sparkles 
 } from 'lucide-react';
+import { useCurrency } from '@/context/CurrencyContext';
 
 interface PropertyItem {
   id: string;
@@ -122,6 +121,7 @@ export const PropertyExplorer: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCommunity, setSelectedCommunity] = useState('All');
   const [activeProperty, setActiveProperty] = useState<PropertyItem | null>(null);
+  const { formatPrice, formatRate } = useCurrency();
 
   const filteredProperties = mockProperties.filter((item) => {
     const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -131,9 +131,8 @@ export const PropertyExplorer: React.FC = () => {
   });
 
   return (
-    <div className="relative">
-      {/* Search and Filter Control Bar */}
-      <div className="rounded-2xl border border-purple-900/20 bg-[#0E0C17]/80 p-5 mb-8 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xl">
+    <div className="relative space-y-6">
+      <div className="rounded-2xl border border-purple-900/20 bg-[#0E0C17]/80 p-5 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xl">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-400" />
           <input
@@ -162,19 +161,18 @@ export const PropertyExplorer: React.FC = () => {
         </div>
       </div>
 
-      {/* Property Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
         {filteredProperties.map((prop) => {
           const pricePerSqft = Math.round(prop.price / prop.sqft);
           return (
             <div
               key={prop.id}
               onClick={() => setActiveProperty(prop)}
-              className="rounded-2xl border border-purple-900/20 hover:border-purple-500/40 bg-[#0E0C17]/80 hover:bg-[#120F1F] p-6 shadow-xl transition-all duration-200 cursor-pointer flex flex-col justify-between group"
+              className="rounded-2xl border border-purple-900/20 hover:border-purple-500/40 bg-[#0E0C17]/90 hover:bg-[#120F1F] p-6 shadow-xl transition-all duration-200 cursor-pointer flex flex-col justify-between group"
             >
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-950/40 border border-purple-500/20 text-purple-300">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-950/50 border border-purple-500/30 text-purple-300">
                     {prop.status}
                   </span>
                   <div className="flex items-center gap-1 text-[11px] text-amber-400 font-mono">
@@ -202,7 +200,7 @@ export const PropertyExplorer: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Maximize2 className="h-4 w-4 text-purple-400" />
-                    <span>{prop.sqft.toLocaleString()} sqft</span>
+                    <span>{prop.sqft.toLocaleString('en-US')} sqft</span>
                   </div>
                 </div>
               </div>
@@ -212,24 +210,24 @@ export const PropertyExplorer: React.FC = () => {
                   <div>
                     <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Transaction Price</span>
                     <span className="text-xl font-bold font-mono text-white">
-                      AED {prop.price.toLocaleString()}
+                      {formatPrice(prop.price)}
                     </span>
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Rate</span>
                     <span className="text-xs font-mono text-slate-300">
-                      AED {pricePerSqft.toLocaleString()}/sqft
+                      {formatRate(pricePerSqft)}
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-purple-900/10 flex items-center justify-between text-[11px]">
+                <div className="mt-4 pt-3 border-t border-purple-900/20 flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1 text-purple-400">
                     <Sparkles className="h-3 w-3 text-amber-400" />
                     ML Valuation
                   </span>
                   <span className="font-mono text-slate-200">
-                    AED {prop.mlValuation.toLocaleString()}
+                    {formatPrice(prop.mlValuation)}
                   </span>
                 </div>
               </div>
@@ -238,7 +236,6 @@ export const PropertyExplorer: React.FC = () => {
         })}
       </div>
 
-      {/* Property Intelligence Drawer */}
       {activeProperty && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-[#0E0C17] border-l border-purple-500/30 h-full p-8 overflow-y-auto shadow-2xl flex flex-col justify-between">
@@ -255,13 +252,12 @@ export const PropertyExplorer: React.FC = () => {
 
               <div>
                 <h2 className="text-2xl font-bold text-white">{activeProperty.title}</h2>
-                <p className="text-sm text-slate-400 flex items-center gap-1 mt-1">
+                <div className="text-sm text-slate-400 flex items-center gap-1 mt-1">
                   <MapPin className="h-3.5 w-3.5 text-purple-400" />
-                  {activeProperty.community} • {activeProperty.type}
-                </p>
+                  <span>{activeProperty.community} • {activeProperty.type}</span>
+                </div>
               </div>
 
-              {/* Data Category Callouts */}
               <div className="p-4 rounded-xl border border-purple-900/30 bg-[#141124] space-y-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
                   <ShieldCheck className="h-4 w-4 text-emerald-400" />
@@ -269,11 +265,11 @@ export const PropertyExplorer: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Last Deed Price:</span>
-                  <span className="font-mono text-white font-bold">AED {activeProperty.price.toLocaleString()}</span>
+                  <span className="font-mono text-white font-bold">{formatPrice(activeProperty.price)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Price per SqFt:</span>
-                  <span className="font-mono text-slate-200">AED {Math.round(activeProperty.price / activeProperty.sqft).toLocaleString()}</span>
+                  <span className="font-mono text-slate-200">{formatRate(Math.round(activeProperty.price / activeProperty.sqft))}</span>
                 </div>
               </div>
 
@@ -284,7 +280,7 @@ export const PropertyExplorer: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">AI Valuation:</span>
-                  <span className="font-mono text-amber-300 font-bold">AED {activeProperty.mlValuation.toLocaleString()}</span>
+                  <span className="font-mono text-amber-300 font-bold">{formatPrice(activeProperty.mlValuation)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Model Spread vs Listing:</span>

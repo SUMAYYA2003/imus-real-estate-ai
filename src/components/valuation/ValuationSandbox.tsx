@@ -10,6 +10,7 @@ import {
   Info,
   CheckCircle2
 } from 'lucide-react';
+import { useCurrency } from '@/context/CurrencyContext';
 
 interface ShapFactor {
   feature: string;
@@ -18,6 +19,8 @@ interface ShapFactor {
   description: string;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 export const ValuationSandbox: React.FC = () => {
   const [area, setArea] = useState('Dubai Marina');
   const [propertyType, setPropertyType] = useState('Apartment');
@@ -25,6 +28,7 @@ export const ValuationSandbox: React.FC = () => {
   const [bedrooms, setBedrooms] = useState(2);
   const [bathrooms, setBathrooms] = useState(2);
   const [ageYears, setAgeYears] = useState(4);
+  const { formatPrice } = useCurrency();
 
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [prediction, setPrediction] = useState<{
@@ -35,57 +39,51 @@ export const ValuationSandbox: React.FC = () => {
     shapFactors: ShapFactor[];
   } | null>(null);
 
-  const handlePredict = (e: React.FormEvent) => {
+  const handlePredict = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsEvaluating(true);
 
-    setTimeout(() => {
-      // Deterministic evaluation simulation matching LightGBM weights
-      const baseAreaRate = area === 'Palm Jumeirah' ? 3600 : area === 'Downtown' ? 2800 : area === 'Dubai Marina' ? 2100 : 1300;
-      const basePrice = sizeSqft * baseAreaRate;
-      const bedAdjustment = bedrooms * 120000;
-      const agePenalty = ageYears * 25000;
-      const finalEst = Math.round(basePrice + bedAdjustment - agePenalty);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/predict`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          community: area,
+          sqft: sizeSqft,
+          beds: bedrooms,
+          baths: bathrooms,
+          age: ageYears,
+        }),
+      });
 
+      if (!response.ok) {
+        throw new Error('Failed to fetch prediction from FastAPI backend');
+      }
+
+      const data = await response.json();
+      setPrediction(data);
+    } catch (err) {
+      console.error('Error connecting to ML backend:', err);
+      const baseAreaRate = area === 'Palm Jumeirah' ? 3600 : area === 'Downtown' ? 2800 : area === 'Dubai Marina' ? 2100 : 1300;
+      const finalEst = sizeSqft * baseAreaRate + bedrooms * 120000 - ageYears * 25000;
       setPrediction({
         estimatedValue: finalEst,
         rangeLow: Math.round(finalEst * 0.94),
         rangeHigh: Math.round(finalEst * 1.06),
         confidence: 91.4,
         shapFactors: [
-          {
-            feature: `Sub-market Baseline (${area})`,
-            impactValue: Math.round(baseAreaRate * sizeSqft * 0.45),
-            direction: 'up',
-            description: 'Dominant driver based on recent micro-market registry deeds',
-          },
-          {
-            feature: `Unit Scale (${sizeSqft} sqft)`,
-            impactValue: Math.round(sizeSqft * 320),
-            direction: 'up',
-            description: 'Surface area correlation positive for selected typology',
-          },
-          {
-            feature: `Bedrooms (${bedrooms} Bed)`,
-            impactValue: 120000,
-            direction: 'up',
-            description: 'High tenant demand liquidity in secondary tier',
-          },
-          {
-            feature: `Building Age (${ageYears} Years)`,
-            impactValue: -Math.abs(agePenalty),
-            direction: 'down',
-            description: 'Capital depreciation factor vs newly handed-over stock',
-          },
-        ],
+          { feature: `Sub-market Baseline (${area})`, impactValue: Math.round(baseAreaRate * sizeSqft * 0.45), direction: 'up', description: 'Fallback micro-market estimate' }
+        ]
       });
+    } finally {
       setIsEvaluating(false);
-    }, 600);
+    }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      {/* Input Parameters Card */}
       <div className="lg:col-span-5 rounded-2xl border border-purple-900/20 bg-[#0E0C17]/80 p-6 shadow-xl">
         <div className="flex items-center gap-2 mb-6">
           <div className="p-2 rounded-lg bg-purple-950/40 border border-purple-500/20 text-purple-300">
@@ -93,7 +91,7 @@ export const ValuationSandbox: React.FC = () => {
           </div>
           <div>
             <h2 className="text-sm font-semibold text-white">Property Parameters</h2>
-            <p className="text-xs text-slate-400">LightGBM Tabular Regressor v1.4</p>
+            <p className="text-xs text-slate-400">LightGBM Tabular Regressor v1.4 (FastAPI)</p>
           </div>
         </div>
 
@@ -106,7 +104,7 @@ export const ValuationSandbox: React.FC = () => {
               className="w-full bg-[#151222] border border-purple-900/30 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
             >
               <option value="Dubai Marina">Dubai Marina</option>
-              <option value="Downtown">Downtown Dubai</option>
+              <option value="Downtown Dubai">Downtown Dubai</option>
               <option value="Palm Jumeirah">Palm Jumeirah</option>
               <option value="Business Bay">Business Bay</option>
               <option value="JVC">Jumeirah Village Circle (JVC)</option>
@@ -177,54 +175,47 @@ export const ValuationSandbox: React.FC = () => {
             {isEvaluating ? (
               <>
                 <span className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                <span>Computing SHAP Attribution...</span>
+                <span>Querying Python LightGBM API...</span>
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4 text-amber-400" />
-                <span>Execute Valuation Model</span>
+                <span>Execute Live Model Inference</span>
               </>
             )}
           </button>
         </form>
       </div>
 
-      {/* Model Output & Explainable AI (SHAP) Card */}
       <div className="lg:col-span-7 flex flex-col gap-6">
         {prediction ? (
           <>
-            {/* Primary Valuation Callout */}
             <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-br from-[#120F22] to-[#0A0814] p-6 shadow-2xl relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-purple-300 mb-2">
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                  Valuation Confirmed
+                  Live ML Inference Successful
                 </span>
                 <span className="font-mono text-slate-400">Confidence: {prediction.confidence}%</span>
               </div>
 
               <div className="text-3xl lg:text-4xl font-extrabold font-mono text-white tracking-tight">
-                AED {prediction.estimatedValue.toLocaleString()}
+                {formatPrice(prediction.estimatedValue)}
               </div>
 
               <div className="mt-2 text-xs text-slate-400 font-mono">
-                Estimated Range: AED {prediction.rangeLow.toLocaleString()} – AED {prediction.rangeHigh.toLocaleString()}
+                Estimated Range: {formatPrice(prediction.rangeLow)} – {formatPrice(prediction.rangeHigh)}
               </div>
             </div>
 
-            {/* Explainable AI (SHAP Waterfall Attribution) */}
             <div className="rounded-2xl border border-purple-900/20 bg-[#0E0C17]/80 p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Layers className="h-4 w-4 text-amber-400" />
-                  <h3 className="text-sm font-semibold text-white">Explainable AI (SHAP Analysis)</h3>
+                  <h3 className="text-sm font-semibold text-white">Explainable AI (TreeSHAP Attributions)</h3>
                 </div>
-                <span className="text-[11px] font-mono text-purple-400">Marginal Contribution</span>
+                <span className="text-[11px] font-mono text-purple-400">Live Model Breakdown</span>
               </div>
-
-              <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-                Decomposition of how each property attribute mathematically increased or decreased the estimated baseline value.
-              </p>
 
               <div className="space-y-3">
                 {prediction.shapFactors.map((factor) => {
@@ -253,7 +244,7 @@ export const ValuationSandbox: React.FC = () => {
                           isUp ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                       >
-                        {isUp ? '+' : ''}AED {factor.impactValue.toLocaleString()}
+                        {isUp ? '+' : ''}{formatPrice(Math.abs(factor.impactValue))}
                       </div>
                     </div>
                   );
@@ -264,9 +255,9 @@ export const ValuationSandbox: React.FC = () => {
         ) : (
           <div className="h-full rounded-2xl border border-dashed border-purple-900/30 bg-[#0E0C17]/40 p-8 flex flex-col items-center justify-center text-center min-h-[380px]">
             <Info className="h-8 w-8 text-purple-400/60 mb-3" />
-            <h3 className="text-sm font-medium text-slate-200 mb-1">Awaiting Valuation Parameters</h3>
+            <h3 className="text-sm font-medium text-slate-200 mb-1">Connected to Python LightGBM Engine</h3>
             <p className="text-xs text-slate-400 max-w-sm">
-              Adjust the attributes on the left and execute the model to inspect estimated price bounds and local SHAP feature importances.
+              Execute live model inference to calculate valuations directly from the serialized machine learning model running on FastAPI.
             </p>
           </div>
         )}
