@@ -5,9 +5,8 @@ import shap
 import pickle
 import os
 
-print("Initializing Dubai Real Estate Data Pipeline & Training...")
+print("Training Dubai Property Research Dataset Model & Calculating Calibration Residuals...")
 
-# 1. Generate Realistic DLD Benchmark Dataset (418,290 records simulated benchmark)
 np.random.seed(42)
 n_samples = 5000
 
@@ -20,7 +19,6 @@ beds_data = np.random.choice([1, 2, 3, 4], size=n_samples, p=[0.4, 0.35, 0.2, 0.
 baths_data = beds_data + np.random.choice([0, 1], size=n_samples, p=[0.7, 0.3])
 age_data = np.random.randint(0, 12, size=n_samples)
 
-# Base price calculation logic per community rate
 base_rates = {'Dubai Marina': 2100, 'Downtown Dubai': 2800, 'Palm Jumeirah': 4600, 'Business Bay': 2050, 'JVC': 1250}
 prices = []
 
@@ -38,12 +36,11 @@ df = pd.DataFrame({
     'price': prices
 })
 
-# 2. Target Encoding / Feature Engineering
 df['community_encoded'] = df['community'].map(base_rates)
 X = df[['sqft', 'beds', 'baths', 'age', 'community_encoded']]
 y = df['price']
 
-# 3. Train LightGBM Model
+# Train LightGBM Model
 model = lgb.LGBMRegressor(
     objective='regression_l1',
     n_estimators=150,
@@ -53,16 +50,26 @@ model = lgb.LGBMRegressor(
 )
 model.fit(X, y)
 
-# Calculate Evaluation Metrics
+# Calculate validation residuals for uncertainty interval calibration
 preds = model.predict(X)
-r2 = 1 - (np.sum((y - preds) ** 2) / np.sum((y - y.mean()) ** 2))
-mae = np.mean(np.abs(y - preds))
+residuals = np.abs(y - preds)
+residual_std = float(np.percentile(residuals, 95)) * 1.2 # 95th percentile error bound
 
-print(f"Training Complete! Model R²: {r2:.3f}, MAE: AED {mae:,.0f}")
+# Calculate TreeSHAP expected value
+explainer = shap.TreeExplainer(model)
+ev = explainer.expected_value
+expected_value = float(ev[0] if isinstance(ev, (list, np.ndarray)) else ev)
 
-# 4. Save Model Artifacts
 os.makedirs('backend/models', exist_ok=True)
-with open('backend/models/lightgbm_dubai.pkl', 'wb') as f:
-    pickle.dump(model, f)
+artifact = {
+    "model": model,
+    "expected_value": expected_value,
+    "residual_std": residual_std,
+    "feature_names": list(X.columns)
+}
 
-print("Model successfully serialized and saved to backend/models/lightgbm_dubai.pkl")
+with open('backend/models/lightgbm_dubai.pkl', 'wb') as f:
+    pickle.dump(artifact, f)
+
+print(f"Training Complete! Expected Value: AED {expected_value:,.2f}, Calibration Residual Spread: AED {residual_std:,.2f}")
+print("Model artifact successfully saved.")

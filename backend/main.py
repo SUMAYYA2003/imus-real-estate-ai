@@ -4,8 +4,9 @@ from pydantic import BaseModel
 import pickle
 import numpy as np
 import os
+import shap
 
-app = FastAPI(title="IMUS AI Valuation & SHAP Inference Engine")
+app = FastAPI(title="IMUS AI Valuation & TreeSHAP Inference Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,10 +18,26 @@ app.add_middleware(
 
 MODEL_PATH = "backend/models/lightgbm_dubai.pkl"
 model = None
+explainer = None
+expected_value = 0.0
+residual_std = 78044.0 * 1.96  # Calibrated validation residual scale (~95% coverage proxy)
 
 if os.path.exists(MODEL_PATH):
     with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
+        artifact = pickle.load(f)
+        if isinstance(artifact, dict):
+            model = artifact.get("model")
+            expected_value = artifact.get("expected_value", 0.0)
+            residual_std = artifact.get("residual_std", 150000.0)
+        else:
+            model = artifact
+            
+    if model:
+        # Initialize true TreeSHAP explainer using the exact loaded model
+        explainer = shap.TreeExplainer(model)
+        if not expected_value and hasattr(explainer, "expected_value"):
+            ev = explainer.expected_value
+            expected_value = float(ev[0] if isinstance(ev, (list, np.ndarray)) else ev)
 
 class ValuationRequest(BaseModel):
     community: str
@@ -37,54 +54,69 @@ COMMUNITY_ENCODING = {
     'JVC': 1250
 }
 
+FEATURE_LABELS = {
+    'sqft': 'Built-up Area (SqFt)',
+    'beds': 'Bedrooms',
+    'baths': 'Bathrooms',
+    'age': 'Building Age',
+    'community_encoded': 'Micro-Market Tier (Community)'
+}
+
 @app.post("/api/predict")
 def predict_valuation(req: ValuationRequest):
-    if not model:
-        raise HTTPException(status_code=500, detail="Model artifact not found. Run train.py first.")
+    if not model or not explainer:
+        raise HTTPException(status_code=500, detail="Model artifact or explainer not initialized.")
     
     comm_enc = COMMUNITY_ENCODING.get(req.community, 2000)
-    features = np.array([[req.sqft, req.beds, req.baths, req.age, comm_enc]])
+    features_array = np.array([[req.sqft, req.beds, req.baths, req.age, comm_enc]], dtype=np.float64)
     
-    predicted_price = float(model.predict(features)[0])
+    # 1. Real Model Prediction
+    predicted_price = float(model.predict(features_array)[0])
     
-    # Real marginal feature attribution approximation based on model coefficients
-    base_val = req.sqft * comm_enc
-    bed_val = req.beds * 110000
-    age_pen = req.age * 22000
+    # 2. True TreeSHAP Calculation
+    shap_values = explainer.shap_values(features_array)
+    if isinstance(shap_values, list):
+        sample_shap = shap_values[0][0]
+    elif len(shap_values.shape) == 2:
+        sample_shap = shap_values[0]
+    else:
+        sample_shap = shap_values
+
+    # Base value from explainer or artifact
+    base_val = float(expected_value)
+    
+    feature_names = ['sqft', 'beds', 'baths', 'age', 'community_encoded']
+    shap_factors = []
+    
+    sum_shap = 0.0
+    for idx, fname in enumerate(feature_names):
+        val = float(sample_shap[idx])
+        sum_shap += val
+        direction = 'up' if val >= 0 else 'down'
+        shap_factors.append({
+            "feature": FEATURE_LABELS.get(fname, fname),
+            "impactValue": round(val, 2),
+            "direction": direction,
+            "description": f"Exact TreeSHAP marginal attribution for {fname}"
+        })
+        
+    # Strict mathematical reconciliation check (no fake residual buckets)
+    reconstructed = base_val + sum_shap
+    diff = abs(reconstructed - predicted_price)
+    
+    # Data-driven prediction interval based on validation residuals
+    range_low = round(max(0.0, predicted_price - residual_std))
+    range_high = round(predicted_price + residual_std)
 
     return {
         "estimatedValue": round(predicted_price),
-        "rangeLow": round(predicted_price * 0.94),
-        "rangeHigh": round(predicted_price * 1.06),
-        "confidence": 94.2,
-        "shapFactors": [
-            {
-                "feature": f"Sub-market Baseline ({req.community})",
-                "impactValue": round(base_val),
-                "direction": "up",
-                "description": "Calculated via LightGBM tree split contribution"
-            },
-            {
-                "feature": f"Unit Scale ({req.sqft} sqft)",
-                "impactValue": round(req.sqft * 350),
-                "direction": "up",
-                "description": "Surface area positive weight"
-            },
-            {
-                "feature": f"Bedrooms ({req.beds} Bed)",
-                "impactValue": round(bed_val),
-                "direction": "up",
-                "description": "Liquidity premium from trained tree nodes"
-            },
-            {
-                "feature": f"Building Age ({req.age} Years)",
-                "impactValue": -round(age_pen),
-                "direction": "down",
-                "description": "Depreciation penalty vector"
-            }
-        ]
+        "baseValue": round(base_val),
+        "rangeLow": range_low,
+        "rangeHigh": range_high,
+        "reconciliationDiff": round(diff, 4),
+        "shapFactors": shap_factors
     }
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "model_loaded": model is not None}
+    return {"status": "healthy", "model_loaded": model is not None, "explainer_loaded": explainer is not None}

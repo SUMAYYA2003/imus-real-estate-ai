@@ -17,9 +17,9 @@ export const Header: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/20 border border-emerald-500/30 text-emerald-400 text-xs">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
-          <span className="font-mono text-[11px]">DLD REGISTRY SYNCED</span>
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-purple-950/20 border border-purple-500/30 text-purple-300 text-xs">
+          <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-ping" />
+          <span className="font-mono text-[11px]">SYNTHETIC PROPERTY RESEARCH DATASET</span>
         </div>
 
         {/* Currency Switcher */}

@@ -8,7 +8,8 @@ import {
   Sparkles, 
   Layers, 
   Info,
-  CheckCircle2
+  CheckCircle2,
+  HelpCircle
 } from 'lucide-react';
 import { useCurrency } from '@/context/CurrencyContext';
 
@@ -33,9 +34,10 @@ export const ValuationSandbox: React.FC = () => {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [prediction, setPrediction] = useState<{
     estimatedValue: number;
+    baseValue: number;
     rangeLow: number;
     rangeHigh: number;
-    confidence: number;
+    reconciliationDiff: number;
     shapFactors: ShapFactor[];
   } | null>(null);
 
@@ -66,17 +68,6 @@ export const ValuationSandbox: React.FC = () => {
       setPrediction(data);
     } catch (err) {
       console.error('Error connecting to ML backend:', err);
-      const baseAreaRate = area === 'Palm Jumeirah' ? 3600 : area === 'Downtown' ? 2800 : area === 'Dubai Marina' ? 2100 : 1300;
-      const finalEst = sizeSqft * baseAreaRate + bedrooms * 120000 - ageYears * 25000;
-      setPrediction({
-        estimatedValue: finalEst,
-        rangeLow: Math.round(finalEst * 0.94),
-        rangeHigh: Math.round(finalEst * 1.06),
-        confidence: 91.4,
-        shapFactors: [
-          { feature: `Sub-market Baseline (${area})`, impactValue: Math.round(baseAreaRate * sizeSqft * 0.45), direction: 'up', description: 'Fallback micro-market estimate' }
-        ]
-      });
     } finally {
       setIsEvaluating(false);
     }
@@ -91,7 +82,7 @@ export const ValuationSandbox: React.FC = () => {
           </div>
           <div>
             <h2 className="text-sm font-semibold text-white">Property Parameters</h2>
-            <p className="text-xs text-slate-400">LightGBM Tabular Regressor v1.4 (FastAPI)</p>
+            <p className="text-xs text-slate-400">LightGBM Regressor v1.4 & TreeSHAP</p>
           </div>
         </div>
 
@@ -104,7 +95,7 @@ export const ValuationSandbox: React.FC = () => {
               className="w-full bg-[#151222] border border-purple-900/30 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
             >
               <option value="Dubai Marina">Dubai Marina</option>
-              <option value="Downtown Dubai">Downtown Dubai</option>
+              <option value="Downtown">Downtown Dubai</option>
               <option value="Palm Jumeirah">Palm Jumeirah</option>
               <option value="Business Bay">Business Bay</option>
               <option value="JVC">Jumeirah Village Circle (JVC)</option>
@@ -175,7 +166,7 @@ export const ValuationSandbox: React.FC = () => {
             {isEvaluating ? (
               <>
                 <span className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                <span>Querying Python LightGBM API...</span>
+                <span>Computing TreeSHAP Values...</span>
               </>
             ) : (
               <>
@@ -190,34 +181,41 @@ export const ValuationSandbox: React.FC = () => {
       <div className="lg:col-span-7 flex flex-col gap-6">
         {prediction ? (
           <>
-            <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-br from-[#120F22] to-[#0A0814] p-6 shadow-2xl relative overflow-hidden">
-              <div className="flex items-center justify-between text-xs text-purple-300 mb-2">
+            <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-br from-[#120F22] to-[#0A0814] p-6 shadow-2xl relative overflow-hidden space-y-2">
+              <div className="flex items-center justify-between text-xs text-purple-300">
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                   Live ML Inference Successful
                 </span>
-                <span className="font-mono text-slate-400">Confidence: {prediction.confidence}%</span>
+                <span className="font-mono text-slate-400">Synthetic Research Dataset</span>
               </div>
 
               <div className="text-3xl lg:text-4xl font-extrabold font-mono text-white tracking-tight">
                 {formatPrice(prediction.estimatedValue)}
               </div>
 
-              <div className="mt-2 text-xs text-slate-400 font-mono">
-                Estimated Range: {formatPrice(prediction.rangeLow)} – {formatPrice(prediction.rangeHigh)}
+              <div className="text-xs text-slate-400 font-mono pt-1 flex items-center justify-between">
+                <span>Prediction Interval: {formatPrice(prediction.rangeLow)} – {formatPrice(prediction.rangeHigh)}</span>
+                <span className="text-purple-400 text-[10px]">Reconciliation Delta: {prediction.reconciliationDiff}</span>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-purple-900/20 bg-[#0E0C17]/80 p-6 shadow-xl">
-              <div className="flex items-center justify-between mb-4">
+            <div className="rounded-2xl border border-purple-900/20 bg-[#0E0C17]/80 p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Layers className="h-4 w-4 text-amber-400" />
                   <h3 className="text-sm font-semibold text-white">Explainable AI (TreeSHAP Attributions)</h3>
                 </div>
-                <span className="text-[11px] font-mono text-purple-400">Live Model Breakdown</span>
+                <span className="text-[11px] font-mono text-slate-400">Exact Shapley Breakdown</span>
               </div>
 
-              <div className="space-y-3">
+              {/* Base Value Display */}
+              <div className="p-3.5 rounded-xl border border-purple-900/30 bg-[#151222] flex items-center justify-between">
+                <span className="text-xs text-slate-300 font-medium">Model Expected Base Value</span>
+                <span className="font-mono text-xs text-white font-bold">{formatPrice(prediction.baseValue)}</span>
+              </div>
+
+              <div className="space-y-2.5">
                 {prediction.shapFactors.map((factor) => {
                   const isUp = factor.direction === 'up';
                   return (
@@ -250,14 +248,19 @@ export const ValuationSandbox: React.FC = () => {
                   );
                 })}
               </div>
+
+              <div className="pt-3 border-t border-purple-950/40 text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+                <HelpCircle className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                <span>Base Value + Feature Contributions = Predicted Valuation (mathematically reconciled)</span>
+              </div>
             </div>
           </>
         ) : (
           <div className="h-full rounded-2xl border border-dashed border-purple-900/30 bg-[#0E0C17]/40 p-8 flex flex-col items-center justify-center text-center min-h-[380px]">
             <Info className="h-8 w-8 text-purple-400/60 mb-3" />
-            <h3 className="text-sm font-medium text-slate-200 mb-1">Connected to Python LightGBM Engine</h3>
+            <h3 className="text-sm font-medium text-slate-200 mb-1">TreeSHAP Engine Ready</h3>
             <p className="text-xs text-slate-400 max-w-sm">
-              Execute live model inference to calculate valuations directly from the serialized machine learning model running on FastAPI.
+              Execute live model inference to compute exact Shapley feature attributions and data-driven prediction intervals.
             </p>
           </div>
         )}
